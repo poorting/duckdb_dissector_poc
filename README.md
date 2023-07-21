@@ -1,5 +1,5 @@
 # duckdb_dissector_poc
-Proof of concept for using duckdb for creating large file fingerprints
+Proof of concept for using duckdb for creating fingerprints based on large files
 
 # Proof of Concept - do not use!
 
@@ -72,7 +72,7 @@ As opposed to loading the entire pcap into a dataframe in memory and working wit
 
 ## Bigger, faster
 
-Pcaps around 10 to 20 MB size are fairly comparable in speed (after all: conversion needs to happen in both cases and these sizes are easily loaded in memory). Still: processing by duckdb is faster than Panda dataframes for the types of operations performed (2 to 4 times as fast on average).
+Pcaps around 10 to 20 MB size are fairly comparable in speed; after all: conversion needs to happen in both cases and the conversions are the biggest time consumers. The time spent on analysis is an order of magnitude smaller. Still, duckdb is about 2 to 5 times faster than Panda dataframes when it comes to the actual analysis (even though the net effect is only a few hundred milliseconds to a few seconds). 
 
 For bigger files the differences get more dramatic:
 
