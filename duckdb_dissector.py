@@ -874,6 +874,8 @@ def main():
         if pcap2pqt.parse_errors > 0:
             logger.info(f'{pcap2pqt.parse_errors} parse errors during conversion. Error lines were skipped')
 
+    analysis = time.time()
+
     db = duckdb.connect()
 
     # Create view on parquet file
@@ -899,7 +901,7 @@ def main():
           "1 as nr_packets, "\
           "from raw"
 
-    # print(sql)
+    print(sql)
     db.execute(sql)
 
     # # See if we can find attack victim
@@ -1042,7 +1044,8 @@ def main():
     db.close()
 
     duration = time.time()-startall
-    print(f"\nOverall took {duration:.2f} seconds")
+    analtime = time.time()-analysis
+    print(f"\nOverall took {duration:.2f} seconds ({analtime:.2f} analysis)")
 
 
 if __name__ == '__main__':
