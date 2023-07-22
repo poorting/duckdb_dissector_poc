@@ -72,16 +72,15 @@ As opposed to loading the entire pcap into a dataframe in memory and working wit
 
 ## Bigger, faster
 
-Pcaps around 10 to 20 MB size are fairly comparable in speed; after all: conversion needs to happen in both cases and the conversions are the biggest time consumers. The time spent on analysis is an order of magnitude smaller. Still, duckdb is about 2 to 5 times faster than Panda dataframes when it comes to the actual analysis (even though the net effect is only a few hundred milliseconds to a few seconds). 
+Pcaps around 10 to 20 MB size are fairly comparable in speed, taking only seconds to process. This is not surprising, as conversion needs to happen in both cases and the conversions are the biggest time consumers. Even so, the time spent on analysis is an order of magnitude smaller: duckdb is about 2 to 5 times faster than Panda dataframes when it comes to the actual analysis (even though the net effect is only a few hundred milliseconds to a few seconds for small files). 
 
 For bigger files the differences get more dramatic:
 
 * A 300MB file, processed by ddos_dissector in nearly two minutes, can be processed by this approach in under half a minute (24 seconds: 23 for conversion, 1 for analysis).
 
-* A 16GB file can be loaded by ddos_dissector on a machine with 16GB of memory, but crashes after the first one or two calculations (after six minutes). This approach processes the file in just under three minutes (2 minutes 50 seconds, although that is mostly the conversion process to parquet: analysis just takes 5 seconds).
+* A 16GB file can be loaded by ddos_dissector on a machine with 16GB of memory, but crashes after the first one or two calculations (after six minutes). The duckdb approach processes the file in just under three minutes (2 minutes 50 seconds. Again that is mostly the conversion process to parquet, analysis just takes 5 seconds).
 
-* A 50GB file is processed in 30 minutes. Again mostly conversion, the actual analysis takes 20 seconds of those 30 minutes.
-
+* A 50GB file is processed in 30 minutes. Yet again mostly conversion, the actual analysis only takes 20 seconds of those 30 minutes.
 
 
 
