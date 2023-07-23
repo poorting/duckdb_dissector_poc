@@ -575,8 +575,7 @@ class AttackVector:
             f"select sum(nr_packets) as nr_packets, sum(nr_bytes) as nr_bytes, "
             "min(time_start) as time_start, max(time_end) as time_end "
             f" from {self.view}").fetchdf()
-        print()
-        pp.pprint(results)
+        logger.debug(results)
         self.packets = int(results['nr_packets'][0])
         self.bytes = int(results['nr_bytes'][0])
         self.time_start: datetime = pytz.utc.localize(results['time_start'][0])
@@ -586,12 +585,12 @@ class AttackVector:
         results = db.execute(f"select distinct(source_address) from {self.view}").fetchdf()
         self.source_ips = list(results['source_address'])
         # print(self.source_ips)
-        print(f"{len(self.source_ips)} IP Addresses")
+        logger.debug(f"{len(self.source_ips)} IP Addresses")
         duration = time.time() - start
-        print(f"That took {duration:.2f} seconds")
+        logger.debug(f"That took {duration:.2f} seconds")
 
         self.destination_ports = dataframe_to_dict(get_outliers(db, self.view, 'destination_port', 0.1)['df'])
-        pp.pprint(self.destination_ports)
+        logger.debug(self.destination_ports)
         self.fraction_of_attack = 0
 
         try:
@@ -609,7 +608,7 @@ class AttackVector:
                 self.service = None
         except OverflowError:  # Random source port (-1), no specific service
             self.service = None
-        print(f"\nservice: {self.service}")
+        logger.debug(f"\nservice: {self.service}")
 
         if self.protocol == 'TCP':
             self.tcp_flags = None
@@ -625,38 +624,38 @@ class AttackVector:
 
         res = get_outliers(db, self.view, 'eth_type', 0.05, return_others=True)
         self.eth_type = dataframe_to_dict(res['df'], translate=ETHERNET_TYPES, others=res['others'])
-        print(f"eth_type: {self.eth_type}\n")
+        logger.debug(f"eth_type: {self.eth_type}\n")
 
         res = get_outliers(db, self.view, 'nr_bytes', 0.05, return_others=True)
         # set nr_bytes to str
 
         self.frame_len = dataframe_to_dict(res['df'].astype({'nr_bytes': str}), others=res['others'])
-        print(f"frame_len: {self.frame_len}\n")
+        logger.debug(f"frame_len: {self.frame_len}\n")
 
         if isinstance(self.eth_type, dict) and ('IPv4' in self.eth_type or 'IPv6' in self.eth_type):
             # IP packets
             res = get_outliers(db, self.view, 'fragmentation_offset', 0.1, return_others=True)
             self.frag_offset = dataframe_to_dict(res['df'].astype({'fragmentation_offset': str}), others=res['others'])
-            print(f"frag_offset: {self.frag_offset}\n")
+            logger.debug(f"frag_offset: {self.frag_offset}\n")
 
             res = get_outliers(db, self.view, 'ttl', 0.069, return_others=True)
             # res = get_outliers(db, self.view, 'ttl', 0.1, return_others=True)
             self.ttl = dataframe_to_dict(res['df'].astype({'ttl': str}), others=res['others'])
-            print(f"ttl: {self.ttl}\n")
+            logger.debug(f"ttl: {self.ttl}\n")
 
         if self.service == 'DNS':
             res = get_outliers(db, self.view, 'dns_qry_name', 0.1, return_others=True)
             self.dns_query_name = dataframe_to_dict(res['df'], others=res['others'])
-            print(f"dns_query_name: {self.dns_query_name}\n")
+            logger.debug(f"dns_query_name: {self.dns_query_name}\n")
 
             res = get_outliers(db, self.view, 'dns_qry_type', 0.1, return_others=True)
             self.dns_query_type = dataframe_to_dict(res['df'].astype({'dns_qry_type': int}),
                                                     translate=DNS_QUERY_TYPES, others=res['others'])
-            print(f"dns_query_type: {self.dns_query_type}\n")
+            logger.debug(f"dns_query_type: {self.dns_query_type}\n")
         elif self.protocol == 'ICMP':
             res = get_outliers(db, self.view, 'icmp_type', 0.1, return_others=True)
             self.icmp_type = dataframe_to_dict(res['df'], translate=ICMP_TYPES, others=res['others'])
-            print(f"icmp_type: {self.icmp_type}\n")
+            logger.debug(f"icmp_type: {self.icmp_type}\n")
         # if self.filetype == FileType.PCAP:
         #     elif self.service in ['HTTP', 'HTTPS']:
         #         self.http_uri = dict(get_outliers(self.data, 'http_uri', fraction_for_outlier=0.05,
@@ -754,8 +753,8 @@ def get_outliers(db: DuckDBPyConnection,
     df_frac['frac'] = df_frac['frac'].map(lambda frac: round(frac, 3))
 
     duration = time.time() - start
-    print(df_all.head())
-    print(f"That took {duration:.2f} seconds")
+    logger.debug(df_all.head())
+    logger.debug(f"That took {duration:.2f} seconds")
 
     return {'df': df_frac, 'others': others}
 
@@ -901,7 +900,7 @@ def main():
           "1 as nr_packets, "\
           "from raw"
 
-    print(sql)
+    logger.debug(sql)
     db.execute(sql)
 
     # # See if we can find attack victim
@@ -914,8 +913,8 @@ def main():
 
     # Create new view that only contains attack traffic
     for index, row in df.iterrows():
-        print("Attack target(s) found:")
-        print(f"{row['destination_address']} ({row['frac']})\n")
+        logger.debug("Attack target(s) found:")
+        logger.debug(f"{row['destination_address']} ({row['frac']})\n")
 
     # enclose target IPs in ' --> so we can make sql as: where destination_address in ('ip1', 'ip2')
     targets_str = [f"'{t}'" for t in list(df['destination_address'])]
@@ -931,19 +930,18 @@ def main():
 
     # Get outliers with fragmentation
     df_attacks1 = get_outliers(db, 'attack', ['ip_proto', 'source_port'], 0.05, return_others=True)
-    pp.pprint(df_attacks1['df'])
-    print(f"others: {df_attacks1['others']}\n")
+    logger.debug(df_attacks1['df'])
+    logger.debug(f"others: {df_attacks1['others']}\n")
     df_attacks_frag = df_attacks1['df']
 
     # Get outliers without fragmentation
     df_attacks_nofrag = get_outliers(db, 'attack_nofrag', ['ip_proto', 'source_port'], 0.05)['df']
-    pp.pprint(df_attacks_nofrag)
-    print()
+    logger.debug(df_attacks_nofrag)
 
     # Leave fragmented for now
     attack_vectors: list[AttackVector] = []
     filter = []
-    if len(df_attacks_nofrag)>0:
+    if len(df_attacks_nofrag) > 0:
         for index, row in df_attacks_nofrag.iterrows():
             # pp.pprint(row)
             source_port = int(row['source_port'])
@@ -955,7 +953,7 @@ def main():
     else:
         # find the different ip_proto's and use that
         df_protos = get_outliers(db, 'attack_nofrag', 'ip_proto', 0.05)['df']
-        print(f"ip_protos: {df_protos}\n")
+        logger.debug(f"ip_protos: {df_protos}\n")
         for index, row in df_protos.iterrows():
             ip_proto = row['ip_proto']
             db.execute(f"create view attack_{index} as select * from attack_nofrag where ip_proto={ip_proto}")
@@ -967,7 +965,7 @@ def main():
     # Now get back to the fragmented bits
     for index, row in df_attacks_frag.iterrows():
         if row['source_port'] == 0:
-            print("Looking into fragmented bits")
+            logger.debug("Looking into fragmented bits")
             # db.execute(f"create view attack_frag_{index} as select * from attack where ip_proto={row['ip_proto']} and source_port=0")
             av = AttackVector(db, 'attack', 0, row['ip_proto'])
             av.fraction_of_attack = row['frac']
@@ -983,7 +981,7 @@ def main():
         # This needs some serious SQL query wrangling...
         # Get a view that contains all data *except* the attack vector outliers
         filter_combi = " or ".join(filter)
-        print(f" not ({filter_combi})")
+        logger.debug(f" not ({filter_combi})")
         # Create remainder view without fragmentation
         if len(filter) > 0:
             db.execute(f"create view remainder as select * from attack_nofrag where not ({filter_combi})")
@@ -991,7 +989,7 @@ def main():
             db.execute(f"create view remainder as select * from attack_nofrag")
 
         df_prot_dest = get_outliers(db, 'remainder', ['ip_proto', 'destination_port'], 0.1)['df']
-        pp.pprint(df_prot_dest)
+        logger.debug(df_prot_dest)
         for index, row in df_prot_dest.iterrows():
             ip_proto = row['ip_proto']
             destination_port = row['destination_port']
