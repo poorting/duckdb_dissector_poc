@@ -72,9 +72,11 @@ As opposed to loading the entire pcap into a dataframe in memory and working wit
 
 ## Bigger, faster
 
-Pcaps around 10 to 20 MB size are fairly comparable in speed, taking only seconds to process. This is not surprising, as conversion needs to happen in both cases and the conversions are the biggest time consumers. Even so, the time spent on analysis is an order of magnitude smaller: duckdb is about 2 to 5 times faster than Panda dataframes when it comes to the actual analysis (even though the net effect is only a few hundred milliseconds to a few seconds for small files). 
+Pcaps around 10 to 20 MB size are fairly comparable in speed, taking only seconds to process. 
+This is not surprising, as conversion needs to happen in both cases and the conversions are the biggest time consumers.
+Even so, the time spent on analysis is an order of magnitude smaller: duckdb is about 2 to 5 times faster than Panda dataframes when it comes to the actual analysis (even though the net effect is only a few hundred milliseconds to a few seconds for small files). 
 
-For bigger files the differences get more dramatic:
+For bigger files the differences get more dramatic. The samples below where run on a machine with 16GB of memory, a 2TB nvme drive, and an AMD Ryzen 5 2600 Six-Core Processor.
 
 * A [300MB file](http://traces.simpleweb.org/booter-attacks-im2015/anon-Booter5.pcap.gz) processed by ddos_dissector in nearly two minutes, can be processed by this approach in under half a minute (24 seconds: 23 for conversion, 1 for analysis).
 
