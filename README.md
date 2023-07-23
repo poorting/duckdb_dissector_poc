@@ -76,13 +76,13 @@ Pcaps around 10 to 20 MB size are fairly comparable in speed, taking only second
 This is not surprising, as conversion needs to happen in both cases and the conversions are the biggest time consumers.
 Even so, the time spent on analysis is an order of magnitude smaller: duckdb is about 2 to 5 times faster than Panda dataframes when it comes to the actual analysis (even though the net effect is only a few hundred milliseconds to a few seconds for small files). 
 
-For bigger files the differences get more dramatic. The samples below where run on a machine with 16GB of memory, a 2TB nvme drive, and an AMD Ryzen 5 2600 Six-Core Processor.
+For bigger files the differences get more dramatic. The samples below were run on a machine with 16GB of memory, a 2TB nvme drive, and an AMD Ryzen 5 2600 Six-Core Processor.
 
 * A [300MB file](http://traces.simpleweb.org/booter-attacks-im2015/anon-Booter5.pcap.gz) processed by ddos_dissector in nearly two minutes, can be processed by this approach in under half a minute (24 seconds: 23 for conversion, 1 for analysis).
 
 * A [7GB file](http://traces.simpleweb.org/booter-attacks-im2015/anon-Booter8.pcap.gz) processed by ddos_dissector in 15 minutes, can be processed by this approach in over a minute (74 seconds: 72 for conversion, 2 for analysis).
 
-* A [16GB file](http://traces.simpleweb.org/booter-attacks-im2015/anon-Booter9.pcap.gz) can be loaded by ddos_dissector on a machine with 16GB of memory, but crashes after the first one or two calculations (after six minutes). The duckdb approach processes the file in just under three minutes (2 minutes 50 seconds. Again that is mostly the conversion process to parquet, analysis just takes 5 seconds).
+* A [16GB file](http://traces.simpleweb.org/booter-attacks-im2015/anon-Booter9.pcap.gz) can be loaded by ddos_dissector, but the process crashes (is killed by the system) after the first one or two calculations (after six minutes). The duckdb approach processes the file in just under three minutes (2 minutes 50 seconds. Again that is mostly the conversion process to parquet, analysis just takes 5 seconds.
 
 * A [50GB file](http://traces.simpleweb.org/booter-attacks-im2015/anon-Booter4.pcap.gz) is processed in 30 minutes. Yet again mostly conversion, the actual analysis only takes 20 seconds of those 30 minutes.
 
