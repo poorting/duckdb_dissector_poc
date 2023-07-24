@@ -314,33 +314,30 @@ class Pcap2Parquet:
 
         use_tmp = False
         filename = Path(self.src_file)
-        if filename.stat().st_size < (self.splitsize * 1000 * 1000):  # PCAP is smaller than 100MB
-            self.chunks = [self.src_file]
+        # Now check if the file ends in .pcap
+        # If not: tcpdump on Ubuntu variants will return permission denied
+        # when splitting into multiple chunks
+        # Solution: copy to tmp folder with extension .pcap...
+        if not self.src_file.endswith('.pcap'):
+            logger.debug(f'Copy/rename file since it does not end in .pcap')
+            shutil.copyfile(self.src_file, f'/tmp/{self.random}.pcap')
+            filename = Path(f'/tmp/{self.random}.pcap')
+            use_tmp = True
+        logger.debug(f'Splitting PCAP file {filename} into chunks of {self.splitsize}MB.')
+        process = subprocess.run(
+            ['tcpdump', '-r', filename, '-w', f'/tmp/pcap2parquet_{self.random}_chunk', '-C', f'{self.splitsize}'],
+            stderr=subprocess.PIPE)
+        output = process.stderr
+        if process.returncode != 0:
+            err = output.decode('utf-8').strip()
+            logger.error(f'splitting file failed: {err}')
         else:
-            # Now check if the file ends in .pcap
-            # If not: tcpdump on Ubuntu variants will return permission denied
-            # when splitting into multiple chunks
-            # Solution: copy to tmp folder with extension .pcap...
-            if not self.src_file.endswith('.pcap'):
-                logger.debug(f'Copy/rename file since it does not end in .pcap')
-                shutil.copyfile(self.src_file, f'/tmp/{self.random}.pcap')
-                filename = Path(f'/tmp/{self.random}.pcap')
-                use_tmp = True
-            logger.debug(f'Splitting PCAP file {filename} into chunks of {self.splitsize}MB.')
-            process = subprocess.run(
-                ['tcpdump', '-r', filename, '-w', f'/tmp/pcap2parquet_{self.random}_chunk', '-C', f'{self.splitsize}'],
-                stderr=subprocess.PIPE)
-            output = process.stderr
-            if process.returncode != 0:
-                err = output.decode('utf-8').strip()
-                logger.error(f'splitting file failed: {err}')
-            else:
-                self.chunks = [Path(rootdir) / file for rootdir, _, files in os.walk('/tmp')
-                               for file in files if file.startswith(f'pcap2parquet_{self.random}_chunk')]
-                logger.debug(f"Split into {len(self.chunks)} chunks")
+            self.chunks = [Path(rootdir) / file for rootdir, _, files in os.walk('/tmp')
+                           for file in files if file.startswith(f'pcap2parquet_{self.random}_chunk')]
+            logger.debug(f"Split into {len(self.chunks)} chunks")
 
-            if use_tmp:
-                os.remove(filename)
+        if use_tmp:
+            os.remove(filename)
 
     # ------------------------------------------------------------------------------
     def __cleanup(self):
