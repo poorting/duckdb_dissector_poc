@@ -730,7 +730,7 @@ def get_outliers(db: DuckDBPyConnection,
                  view: str,
                  column: Union[str, list[str]],
                  fraction_for_outlier: float,
-                 return_others: bool = False) -> pd.DataFrame | None:
+                 return_others: bool = False):
 
     pp = pprint.PrettyPrinter(indent=4)
     start = time.time()
