@@ -524,7 +524,7 @@ class CustomConsoleFormatter(logging.Formatter):
         info = ''
         warning = '\033[0;33m'
         error = '\033[1;33m'
-        debug = '\033[1;34m'
+        debug = '\033[1;35m'
         reset = "\x1b[0m"
 
         formatter = "%(levelname)s - %(message)s"
@@ -750,7 +750,7 @@ def get_outliers(db: DuckDBPyConnection,
     df_frac['frac'] = df_frac['frac'].map(lambda frac: round(frac, 3))
 
     duration = time.time() - start
-    logger.debug(df_all.head())
+    logger.debug(f"{view} --> {column}({fraction_for_outlier})\n{df_all.head()}")
     logger.debug(f"That took {duration:.2f} seconds")
 
     return {'df': df_frac, 'others': others}
