@@ -52,7 +52,7 @@ class UnicodeErrorIgnorerIO(io.IOBase):
 class Pcap2Parquet:
     PCAP_COLUMN_NAMES: dict[str, dict] = {
         '_ws.col.Time': {'frame_time': pa.timestamp('us')},
-        # 'frame.time': {'frame_time': pa.timestamp('us')},
+        # 'frame.time': {'frame_time1': pa.timestamp('us')},
         'ip.src': {'ip_src': pa.string()},
         'ip.dst': {'ip_dst': pa.string()},
         'ip.proto': {'ip_proto': pa.uint8()},
@@ -433,6 +433,7 @@ def read_file(filename: Path, dst_dir: str, filetype: FileType, nr_processes: in
     :param nr_processes: int: number of processes used to concurrently process the capture file.
     :return: Filename of the resulting parquet file
     """
+    LOGGER.info(f'Loading "{filename.name}"...')
     LOGGER.debug(f'Converting "{filename}" ({filename.name})... with {nr_processes} CPUs')
 
     if filetype == FileType.FLOW:
@@ -462,7 +463,6 @@ def read_files(filenames: list[Path], dst_dir: str, filetype: FileType, nr_proce
         # No way to parallel process individual flow files, so process files in parallel instead
         # return read_flow(filename, dst_dir)
         items = [(filename, dst_dir) for filename in filenames]
-        pp.pprint(items)
         pool = multiprocessing.Pool(nr_processes)
         pqt_files = pool.starmap(read_flow, items)  # Convert the flow files concurrently
         pool.close()
