@@ -75,8 +75,8 @@ class AttackVector:
         self.entries = int(results['entries'][0])
         self.packets = int(results['nr_packets'][0])
         self.bytes = int(results['nr_bytes'][0])
-        self.time_start: datetime = pytz.utc.localize(results['time_start'][0])
-        self.time_end: datetime = pytz.utc.localize(results['time_end'][0])
+        self.time_start: datetime = results['time_start'][0].replace(tzinfo=None)
+        self.time_end: datetime = results['time_end'][0].replace(tzinfo=None)
         self.duration = (self.time_end - self.time_start).seconds
 
         results = db.execute(f"select distinct(source_address) from '{self.view}'").fetchdf()
@@ -133,8 +133,8 @@ class AttackVector:
                 self.frag_offset = dataframe_to_dict(res['df'].astype({'fragmentation_offset': str}), others=res['others'])
                 LOGGER.debug(f"frag_offset: {self.frag_offset}\n")
 
-                res = get_outliers(db, self.view, 'ttl', 0.069, return_others=True)
-                # res = get_outliers(db, self.view, 'ttl', 0.1, return_others=True)
+                # res = get_outliers(db, self.view, 'ttl', 0.069, return_others=True)
+                res = get_outliers(db, self.view, 'ttl', 0.1, return_others=True)
                 self.ttl = dataframe_to_dict(res['df'].astype({'ttl': str}), others=res['others'])
                 LOGGER.debug(f"ttl: {self.ttl}\n")
 
@@ -191,14 +191,15 @@ class AttackVector:
             'source_port': self.source_port if self.source_port != -1 else 'random',
             'destination_ports': self.destination_ports,
             'tcp_flags': self.tcp_flags,
-            f'nr_{"flows" if self.filetype == FileType.FLOW else "packets"}': len(self),
-            # 'nr_packets': int(self.packets),
+            f'nr_{"flows" if self.filetype == FileType.FLOW else "packets"}': self.entries,
+            'nr_packets': int(self.packets),
             'nr_megabytes': int(self.bytes) // 1_000_000,
             'time_start': self.time_start.isoformat(),
             'duration_seconds': self.duration,
             'source_ips': f'{len(self.source_ips)} IP addresses ommitted' if summarized
             else [str(i) for i in self.source_ips],
         }
+
         if self.filetype == FileType.PCAP:
             fields.update({'ethernet_type': self.eth_type,
                            'frame_len': self.frame_len})

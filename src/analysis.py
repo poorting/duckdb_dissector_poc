@@ -139,8 +139,8 @@ def compute_summary(attack_vectors: list[AttackVector]) -> dict[str, Any]:
         else:
             av.fraction_of_attack = 0
 
-    time_start: datetime = min(times)
-    time_end: datetime = max(times)
+    time_start: datetime = min(times).replace(tzinfo=None)
+    time_end: datetime = max(times).replace(tzinfo=None)
     duration = (time_end - time_start).seconds
     nr_bytes = total_bytes
     nr_packets = total_pkts
