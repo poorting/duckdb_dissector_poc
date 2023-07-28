@@ -95,10 +95,12 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
             attack_vectors.append(av)
 
     # Handle the fragmentation bits now
-    LOGGER.debug("Checking fragmented bits now")
-    for protocol in fragmentation_protocols:
-        av = AttackVector(attack.db, attack.view, 0, protocol, attack.filetype)
-        attack_vectors.append(av)
+    # But only needed if other attack vectors already found
+    if len(attack_vectors) > 0:
+        LOGGER.debug("Checking fragmented bits now")
+        for protocol in fragmentation_protocols:
+            av = AttackVector(attack.db, attack.view, 0, protocol, attack.filetype)
+            attack_vectors.append(av)
 
     return sorted(attack_vectors)
 
@@ -132,7 +134,10 @@ def compute_summary(attack_vectors: list[AttackVector]) -> dict[str, Any]:
         ip_addresses.update(av.source_ips)
 
     for av in attack_vectors:
-        av.fraction_of_attack = round(av.packets/total_pkts_nofrag, 3)
+        if total_pkts_nofrag>0:
+            av.fraction_of_attack = round(av.packets/total_pkts_nofrag, 3)
+        else:
+            av.fraction_of_attack = 0
 
     time_start: datetime = min(times)
     time_end: datetime = max(times)
