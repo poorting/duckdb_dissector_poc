@@ -1,3 +1,4 @@
 duckdb
 pandas
 pyarrow
+pymisp
