@@ -61,7 +61,8 @@ class AttackVector:
         self.view = f"{self.protocol}-{str(uuid.uuid4())}"
         start = time.time()
         if source_port == -1:
-            self.view = view
+            db.execute(
+                f"create view '{self.view}' as select * from '{view}' where protocol='{protocol}'")
             self.source_port = dataframe_to_dict(get_outliers(db, self.view, 'source_port', 0.1)['df'])
         else:
             db.execute(
@@ -149,6 +150,7 @@ class AttackVector:
                 LOGGER.debug(f"dns_query_type: {self.dns_query_type}\n")
             elif self.protocol == 'ICMP':
                 res = get_outliers(db, self.view, 'icmp_type', 0.1, return_others=True)
+                pp.pprint(res)
                 self.icmp_type = dataframe_to_dict(res['df'], translate=ICMP_TYPES, default='random', others=res['others'])
                 LOGGER.debug(f"icmp_type: {self.icmp_type}\n")
             elif self.service in ['HTTP', 'HTTPS']:
