@@ -83,6 +83,8 @@ if __name__ == '__main__':
     # db = duckdb.connect('test.duckdb')
     db = duckdb.connect()
 
+    start = time.time()
+
     view = parquet_files_to_view(db, pqt_files, filetype)
     attack = Attack(db, view, filetype)
 
@@ -100,6 +102,9 @@ if __name__ == '__main__':
     summary = compute_summary(attack_vectors)  # Compute summary statistics of the attack (e.g. average bps / Bpp / pps)
     fingerprint = Fingerprint(target=target, summary=summary, attack_vectors=attack_vectors,
                               show_target=args.show_target)
+
+    duration = time.time() - start
+    LOGGER.info(f"Analysis took {duration:.2f}s")
     if args.summary:  # If the user wants a preview, show the fingerprint in the terminal
         LOGGER.info(str(fingerprint))
 
