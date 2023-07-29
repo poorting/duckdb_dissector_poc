@@ -425,23 +425,6 @@ def read_pcap(filename: Path, dst_dir: str, nr_processes: int) -> str:
     return parquet_file
 
 
-def read_file(filename: Path, dst_dir: str, filetype: FileType, nr_processes: int) -> Path:
-    """
-    Convert capture file into parquet using either read_flow or read_pcap
-    :param filename: Path to capture file
-    :param filetype: FLOW or PCAP
-    :param nr_processes: int: number of processes used to concurrently process the capture file.
-    :return: Filename of the resulting parquet file
-    """
-    LOGGER.info(f'Loading "{filename.name}"...')
-    LOGGER.debug(f'Converting "{filename}" ({filename.name})... with {nr_processes} CPUs')
-
-    if filetype == FileType.FLOW:
-        return read_flow(filename, dst_dir)
-    elif filetype == FileType.PCAP:
-        return read_pcap(filename, dst_dir, nr_processes)
-
-
 def read_files(filenames: list[Path], dst_dir: str, filetype: FileType, nr_processes: int) -> list[Path]:
     """
     Convert capture files into parquet using either read_flow or read_pcap
@@ -457,7 +440,7 @@ def read_files(filenames: list[Path], dst_dir: str, filetype: FileType, nr_proce
     if filetype == FileType.PQT:
         return filenames
     elif filetype == FileType.PCAP:
-        pqt_files = [read_file(f, dst_dir=dst_dir, filetype=filetype, nr_processes=nr_processes)
+        pqt_files = [read_pcap(f, dst_dir=dst_dir, nr_processes=nr_processes)
                      for f in filenames]
     elif filetype == FileType.FLOW:
         # No way to parallel process individual flow files, so process files in parallel instead

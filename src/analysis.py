@@ -21,7 +21,7 @@ def infer_target(attack: Attack) -> str:
     :return: Target IP address as a string, or None if nothing found
     """
     LOGGER.debug("Inferring attack target.")
-    targets = get_outliers_single(attack.db, attack.view, 'destination_address', str, 0.5)
+    targets = get_outliers_single(attack.db, attack.view, 'destination_address', 0.5)
 
     target = None
     if not len(targets) == 0:

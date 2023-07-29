@@ -32,7 +32,7 @@ def parse_arguments() -> Namespace:
                                                                  '(default is the number of CPU cores)',
                         default=os.cpu_count())
     parser.add_argument('--target', type=str, dest='target',
-                        help='Optional: target IP address or subnet of this attack')
+                        help='Optional: target IP address of this attack (subnet currently unsupported)')
     parser.add_argument('--ddosdb', action='store_true', help='Optional: directly upload fingerprint to DDoS-DB')
     parser.add_argument('--misp', action='store_true', help='Optional: directly upload fingerprint to MISP')
     parser.add_argument('--noverify', action='store_true', help="Optional: Don't verify TLS certificates")

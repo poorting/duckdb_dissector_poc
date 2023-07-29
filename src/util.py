@@ -1,3 +1,4 @@
+import datetime
 import sys
 import pandas as pd
 import duckdb
@@ -18,7 +19,7 @@ import pprint
 
 __all__ = ['IPPROTO_TABLE', 'AMPLIFICATION_SERVICES', 'ETHERNET_TYPES', 'TCP_FLAG_NAMES',
            'ICMP_TYPES', 'DNS_QUERY_TYPES', 'FileType', 'determine_filetype', 'print_logo', 'error', 'parse_config',
-           'get_outliers_single', 'get_outliers_mult', 'dataframe_to_dict', 'parquet_files_to_view',
+           'get_outliers_single', 'get_outliers_mult', 'parquet_files_to_view',
            'determine_source_filetype']
 
 IPPROTO_TABLE: OrderedDict() = {
@@ -192,6 +193,18 @@ DNS_QUERY_TYPES: dict[int, str] = {
     63: 'ZONEMD'
 }
 
+INT_COLUMNS: list[str] = [
+    'source_port',
+    'destination_port',
+    'fragmentation_offset',
+    'ntp_requestcode',
+    'ttl',
+    'nr_bytes',
+    'nr_packets',
+    'icmp_type',
+    'eth_type',
+]
+
 
 class FileType(Enum):
     """
@@ -308,23 +321,37 @@ def parse_config(file: Path, misp=False) -> dict[str, Any]:
 def get_outliers_single(db: DuckDBPyConnection,
                         view: str,
                         column: str,
-                        column_type: type,
                         fraction_for_outlier: float,
                         return_others: bool = False,
                         use_zscore=True):
 
+    start = time.time()
     df_all = db.execute(
         f"select {column}, sum(nr_packets)/(select sum(nr_packets) from '{view}') as frac from '{view}'"
         f" group by all order by frac desc").fetchdf()
 
     zscores = (df_all['frac'] - df_all['frac'].mean()) / df_all['frac'].std()
     LOGGER.debug(f"top 5 '{column}':\n{df_all.head()}")
+    LOGGER.debug(f"{len(df_all)} results")
 
-    outliers = [(column_type(row[column]), round(row['frac'], 3)) for index, row in df_all.iterrows()
-                if row['frac'] > fraction_for_outlier or (use_zscore and zscores[index] > 2)]
+    # Explicit cast for integer column types (otherwise int turns to float)
+    column_type = int if column in INT_COLUMNS else type(df_all.iloc[0][column])
+    LOGGER.debug(f"Column type: {column_type}")
+
+    # If the top result already below fraction and zscore<2 then don't bother
+    # (Shaves two seconds of the time needed for traversing 64k destination ports)
+    row = df_all.iloc[0]
+    if row['frac'] <= fraction_for_outlier and ((use_zscore and zscores[0] <= 2) or not use_zscore):
+        outliers = []
+    else:
+        outliers = [(column_type(row[column]), round(row['frac'], 3)) for index, row in df_all.iterrows()
+                    if row['frac'] > fraction_for_outlier or (use_zscore and zscores[index] > 2)]
 
     if outliers and return_others and (explained := sum([fraction for _, fraction in outliers])) < 0.99:
         outliers.append(('others', round(1 - explained, 3)))
+
+    duration = time.time() - start
+    LOGGER.debug(f" took {duration:.2f}s")
 
     return outliers
 
@@ -349,35 +376,9 @@ def get_outliers_mult(db: DuckDBPyConnection,
 
     duration = time.time() - start
     LOGGER.debug(f"{view} --> {columns}({fraction_for_outlier})\n{df_all.head()}")
-    LOGGER.debug(f"That took {duration:.2f} seconds")
+    LOGGER.debug(f" took {duration:.2f}s")
 
     return df_frac
-
-
-def dataframe_to_dict(df: pd.DataFrame, default: str = 'random', translate: dict = None, others = None):
-    if len(df.columns) != 2:
-        return default
-
-    if df.empty:
-        return default
-
-    ret = dict()
-    for index, row in df.iterrows():
-        if translate:
-            if isinstance(row[0], str):
-                ret[row[0]] = row[1]
-            else:
-                ret[translate[int(row[0])]] = row[1]
-        else:
-            if isinstance(row[0], str):
-                ret[row[0]] = row[1]
-            else:
-                ret[int(row[0])] = row[1]
-
-    if others:
-        ret['others'] = others
-
-    return ret
 
 
 def parquet_files_to_view(db: DuckDBPyConnection, pqt_files: list, filetype: FileType) -> str:
