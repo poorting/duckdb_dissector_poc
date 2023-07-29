@@ -10,7 +10,7 @@ from argparse import ArgumentParser, Namespace
 from logger import LOGGER
 from misp import MispInstance
 from reader import read_files
-from attack import Attack, AttackVector, Fingerprint
+from attack import Attack, Fingerprint
 from analysis import infer_target, extract_attack_vectors, compute_summary
 from util import parquet_files_to_view, FileType, determine_filetype, determine_source_filetype, \
     print_logo, parse_config
@@ -82,7 +82,6 @@ if __name__ == '__main__':
 
     # db = duckdb.connect('test.duckdb')
     db = duckdb.connect()
-
     start = time.time()
 
     view = parquet_files_to_view(db, pqt_files, filetype)

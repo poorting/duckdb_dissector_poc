@@ -9,7 +9,7 @@ import pytz
 
 from logger import LOGGER
 from attack import Attack, AttackVector
-from util import get_outliers, FileType
+from util import get_outliers_single, get_outliers_mult, FileType
 
 __all__ = ["infer_target", "extract_attack_vectors", "compute_summary"]
 
@@ -21,10 +21,11 @@ def infer_target(attack: Attack) -> str:
     :return: Target IP address as a string, or None if nothing found
     """
     LOGGER.debug("Inferring attack target.")
-    df = get_outliers(attack.db, attack.view, 'destination_address', 0.5)['df']
+    targets = get_outliers_single(attack.db, attack.view, 'destination_address', str, 0.5)
+
     target = None
-    if not df.empty:
-        target = df['destination_address'][0]
+    if not len(targets) == 0:
+        target, _ = targets[0]
     return target
 
 
@@ -36,10 +37,8 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
     """
     LOGGER.info('Extracting attack vectors.')
     # Get outliers with fragmentation
-    df_attacks_frag = get_outliers(attack.db, attack.view, ['protocol', 'source_port'], 0.05, return_others=True)
-    LOGGER.debug(df_attacks_frag['df'])
-    LOGGER.debug(f"others: {df_attacks_frag['others']}\n")
-    df_attacks_frag = df_attacks_frag['df']
+    df_attacks_frag = get_outliers_mult(attack.db, attack.view, ['protocol', 'source_port'], 0.05)
+    LOGGER.debug(df_attacks_frag)
     fragmentation_protocols = set()  # protocols for which a significant fraction of traffic is fragmented packets
     for index, row in df_attacks_frag.iterrows():
         source_port = int(row['source_port'])
@@ -51,10 +50,8 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
 
     # Create 'attack' view without fragmentation based on target(s)
     attack.db.execute(f"create view attack_nofrag as select * from '{attack.view}' where source_port>0")
-    df_attacks_nofrag = get_outliers(attack.db, 'attack_nofrag', ['protocol', 'source_port'], 0.05, return_others=True)
-    LOGGER.debug(df_attacks_nofrag['df'])
-    LOGGER.debug(f"others: {df_attacks_nofrag['others']}\n")
-    df_attacks_nofrag = df_attacks_nofrag['df']
+    df_attacks_nofrag = get_outliers_mult(attack.db, 'attack_nofrag', ['protocol', 'source_port'], 0.05)
+    LOGGER.debug(df_attacks_nofrag)
 
     LOGGER.debug(f'Extracting attack vectors from source_port / protocol pair outliers ')
     # Leave fragmented for now
@@ -86,7 +83,7 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
         else:
             attack.db.execute(f"create view remainder as select * from attack_nofrag")
 
-        df_prot_dest = get_outliers(attack.db, 'remainder', ['protocol', 'destination_port'], 0.1)['df']
+        df_prot_dest = get_outliers_mult(attack.db, 'remainder', ['protocol', 'destination_port'], 0.1)
         LOGGER.debug(df_prot_dest)
         # If combine outliers of the same protocol
         protos = list(set(list(df_prot_dest['protocol'])))

@@ -14,7 +14,7 @@ from datetime import datetime
 # from netaddr import IPAddress, IPNetwork
 
 from util import AMPLIFICATION_SERVICES, ETHERNET_TYPES, DNS_QUERY_TYPES, ICMP_TYPES, TCP_FLAG_NAMES, \
-    get_outliers, dataframe_to_dict, FileType
+    get_outliers_single, get_outliers_mult, dataframe_to_dict, FileType
 from logger import LOGGER
 from misp import MispInstance
 
@@ -63,7 +63,8 @@ class AttackVector:
         if source_port == -1:
             db.execute(
                 f"create view '{self.view}' as select * from '{view}' where protocol='{protocol}'")
-            self.source_port = dataframe_to_dict(get_outliers(db, self.view, 'source_port', 0.1)['df'])
+            self.source_port = \
+                dict(get_outliers_single(db, self.view, 'source_port', int, 0.1, use_zscore=False)) or "random"
         else:
             db.execute(
                 f"create view '{self.view}' as select * from '{view}' where protocol='{protocol}' and source_port={source_port}")
@@ -84,9 +85,10 @@ class AttackVector:
         self.source_ips = list(results['source_address'])
         LOGGER.debug(f"{len(self.source_ips)} IP Addresses")
 
-        df_dp = get_outliers(db, self.view, 'destination_port', 0.1, return_others=True)
         self.destination_ports = \
-            dataframe_to_dict(df_dp['df'].astype({'destination_port': str}), others=df_dp['others'])
+            dict(get_outliers_single(db, self.view, 'destination_port', int, 0.1,
+                                     use_zscore=False, return_others=True))\
+            or "random"
         LOGGER.debug(self.destination_ports)
         self.fraction_of_attack = 0
 
@@ -99,7 +101,7 @@ class AttackVector:
             else:
                 self.service = None
         except OSError:  # service not found by socket.getservbyport
-            if self.source_port == 0 and len(self.destination_ports) == 1 and list(self.destination_ports)[0] == '0':
+            if self.source_port == 0 and len(self.destination_ports) == 1 and list(self.destination_ports)[0] == 0:
                 self.service = 'Fragmented IP packets'
             else:
                 self.service = None
@@ -109,8 +111,9 @@ class AttackVector:
 
         self.tcp_flags = None
         if self.protocol == 'TCP':
-            flags = get_outliers(db, self.view, 'tcp_flags', 0.1, return_others=True)
-            tcp_flags = dataframe_to_dict(flags['df'], None, others=flags['others'])
+            tcp_flags = dict(get_outliers_single(db, self.view, 'tcp_flags', str, 0.1, return_others=False))
+            # tcp_flags = dataframe_to_dict(flags['df'], None, others=flags['others'])
+            # tcp_flags = dict(flags)
 
             if tcp_flags:
                 self.tcp_flags = {}
@@ -118,56 +121,61 @@ class AttackVector:
                     self.tcp_flags[key.replace('·', '.')] = value
 
         if self.filetype == FileType.PCAP:
-            res = get_outliers(db, self.view, 'eth_type', 0.05, return_others=True)
-            self.eth_type = dataframe_to_dict(res['df'], translate=ETHERNET_TYPES, others=res['others'])
+            self.eth_type = get_outliers_single(db, self.view, 'eth_type', int, 0.05, return_others=True)
+            LOGGER.debug(self.eth_type)
+            if self.eth_type:
+                et = dict()
+                for key, value in self.eth_type:
+                    et[ETHERNET_TYPES.get(int(key), "others")] = value
+                self.eth_type = et
             LOGGER.debug(f"eth_type: {self.eth_type}\n")
 
-            res = get_outliers(db, self.view, 'nr_bytes', 0.05, return_others=True)
-            # set nr_bytes to str
-
-            self.frame_len = dataframe_to_dict(res['df'].astype({'nr_bytes': str}), others=res['others'])
+            self.frame_len = dict(get_outliers_single(db, self.view, 'nr_bytes', int, 0.05, return_others=True)) or "random"
             LOGGER.debug(f"frame_len: {self.frame_len}\n")
 
             if isinstance(self.eth_type, dict) and ('IPv4' in self.eth_type or 'IPv6' in self.eth_type):
-                # IP packets
-                res = get_outliers(db, self.view, 'fragmentation_offset', 0.1, return_others=True)
-                self.frag_offset = dataframe_to_dict(res['df'].astype({'fragmentation_offset': str}), others=res['others'])
+                self.frag_offset = \
+                    dict(get_outliers_single(db, self.view, 'fragmentation_offset', int, 0.1, return_others=True))
                 LOGGER.debug(f"frag_offset: {self.frag_offset}\n")
 
-                # res = get_outliers(db, self.view, 'ttl', 0.069, return_others=True)
-                res = get_outliers(db, self.view, 'ttl', 0.1, return_others=True)
-                self.ttl = dataframe_to_dict(res['df'].astype({'ttl': str}), others=res['others'])
+                self.ttl = dict(get_outliers_single(db, self.view, 'ttl', int, 0.1, return_others=True)) or "random"
                 LOGGER.debug(f"ttl: {self.ttl}\n")
 
             if self.service == 'DNS':
-                res = get_outliers(db, self.view, 'dns_qry_name', 0.1, return_others=True)
-                self.dns_query_name = dataframe_to_dict(res['df'], others=res['others'])
+                self.dns_query_name = \
+                    dict(get_outliers_single(db, self.view, 'dns_qry_name', str, 0.1, return_others=True)) or "random"
                 LOGGER.debug(f"dns_query_name: {self.dns_query_name}\n")
 
-                res = get_outliers(db, self.view, 'dns_qry_type', 0.1, return_others=True)
-                self.dns_query_type = dataframe_to_dict(res['df'].astype({'dns_qry_type': int}),
-                                                        translate=DNS_QUERY_TYPES, others=res['others'])
+                self.dns_query_type = \
+                    dict(get_outliers_single(db, self.view, 'dns_qry_type', int, 0.1, return_others=True))
+                if self.dns_query_type:
+                    dqt = dict()
+                    for key, value in self.dns_query_type.items():
+                        dqt[DNS_QUERY_TYPES.get(int(key), "others")] = value
+                    self.dns_query_type = dqt
+                else:
+                    self.dns_query_type = "random"
                 LOGGER.debug(f"dns_query_type: {self.dns_query_type}\n")
+
             elif self.protocol == 'ICMP':
-                res = get_outliers(db, self.view, 'icmp_type', 0.1, return_others=True)
+                res = get_outliers_single(db, self.view, 'icmp_type', int, 0.1, return_others=True)
                 pp.pprint(res)
                 self.icmp_type = dataframe_to_dict(res['df'], translate=ICMP_TYPES, default='random', others=res['others'])
                 LOGGER.debug(f"icmp_type: {self.icmp_type}\n")
             elif self.service in ['HTTP', 'HTTPS']:
-                res = get_outliers(db, self.view, 'http_uri', 0.05, return_others=True)
+                res = get_outliers_single(db, self.view, 'http_uri', str, 0.05, return_others=True)
                 self.http_uri = dataframe_to_dict(res['df'], others=res['others'])
                 LOGGER.debug(f"http_uri: {self.http_uri}\n")
 
-                res = get_outliers(db, self.view, 'http_method', 0.1, return_others=True)
+                res = get_outliers_single(db, self.view, 'http_method', str, 0.1, return_others=True)
                 self.http_method = dataframe_to_dict(res['df'], others=res['others'])
                 LOGGER.debug(f"http_method: {self.http_method}\n")
 
-                res = get_outliers(db, self.view, 'http_user_agent', 0.05, return_others=True)
+                res = get_outliers_single(db, self.view, 'http_user_agent', str, 0.05, return_others=True)
                 self.http_user_agent = dataframe_to_dict(res['df'], others=res['others'])
                 LOGGER.debug(f"http_user_agent: {self.http_user_agent}\n")
             elif self.service == 'NTP':
-                self.ntp_requestcode = dict(get_outliers(self.data, 'ntp_requestcode', fraction_for_outlier=0.1,
-                                                         return_others=True)) or 'random'
+                self.ntp_requestcode = dict(get_outliers_single(self.data, 'ntp_requestcode', int, fraction_for_outlier=0.1, return_others=True)) or 'random'
                 LOGGER.debug(f"ntp_requestcode: {self.ntp_requestcode}\n")
 
     def __str__(self):

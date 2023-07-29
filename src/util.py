@@ -10,6 +10,7 @@ from typing import Union, Any
 from pathlib import Path
 from configparser import ConfigParser, NoOptionError, NoSectionError
 from collections import OrderedDict
+from typing import Union
 
 from logger import LOGGER
 
@@ -17,7 +18,8 @@ import pprint
 
 __all__ = ['IPPROTO_TABLE', 'AMPLIFICATION_SERVICES', 'ETHERNET_TYPES', 'TCP_FLAG_NAMES',
            'ICMP_TYPES', 'DNS_QUERY_TYPES', 'FileType', 'determine_filetype', 'print_logo', 'error', 'parse_config',
-           'get_outliers', 'dataframe_to_dict', 'parquet_files_to_view', 'determine_source_filetype']
+           'get_outliers_single', 'get_outliers_mult', 'dataframe_to_dict', 'parquet_files_to_view',
+           'determine_source_filetype']
 
 IPPROTO_TABLE: OrderedDict() = {
     num: name[8:]
@@ -303,36 +305,53 @@ def parse_config(file: Path, misp=False) -> dict[str, Any]:
               f"The config file must include a section '{platform}' with keys 'host' and 'token'.")
 
 
-def get_outliers(db: DuckDBPyConnection,
-                 view: str,
-                 column: Union[str, list[str]],
-                 fraction_for_outlier: float,
-                 return_others: bool = False):
+def get_outliers_single(db: DuckDBPyConnection,
+                        view: str,
+                        column: str,
+                        column_type: type,
+                        fraction_for_outlier: float,
+                        return_others: bool = False,
+                        use_zscore=True):
+
+    df_all = db.execute(
+        f"select {column}, sum(nr_packets)/(select sum(nr_packets) from '{view}') as frac from '{view}'"
+        f" group by all order by frac desc").fetchdf()
+
+    zscores = (df_all['frac'] - df_all['frac'].mean()) / df_all['frac'].std()
+    LOGGER.debug(f"top 5 '{column}':\n{df_all.head()}")
+
+    outliers = [(column_type(row[column]), round(row['frac'], 3)) for index, row in df_all.iterrows()
+                if row['frac'] > fraction_for_outlier or (use_zscore and zscores[index] > 2)]
+
+    if outliers and return_others and (explained := sum([fraction for _, fraction in outliers])) < 0.99:
+        outliers.append(('others', round(1 - explained, 3)))
+
+    return outliers
+
+
+def get_outliers_mult(db: DuckDBPyConnection,
+                      view: str,
+                      columns: list[str],
+                      fraction_for_outlier: float):
+
+    pp = pprint.PrettyPrinter(indent=4)
 
     start = time.time()
-    cols = column
-    if isinstance(column, list):
-        cols = ','.join(column)
+    cols = ','.join(columns)
 
     df_all = db.execute(
         f"select {cols}, sum(nr_packets)/(select sum(nr_packets) from '{view}') as frac from '{view}'"
         f" group by all order by frac desc").fetchdf()
 
     df_frac = df_all[df_all['frac'] > fraction_for_outlier].copy()
-
     others = None
-    if return_others:
-        others = round(df_all[df_all['frac'] <= fraction_for_outlier]['frac'].sum(), 3)
-        if others < 0.002:
-            others = None
-
     df_frac['frac'] = df_frac['frac'].map(lambda frac: round(frac, 3))
 
     duration = time.time() - start
-    LOGGER.debug(f"{view} --> {column}({fraction_for_outlier})\n{df_all.head()}")
+    LOGGER.debug(f"{view} --> {columns}({fraction_for_outlier})\n{df_all.head()}")
     LOGGER.debug(f"That took {duration:.2f} seconds")
 
-    return {'df': df_frac, 'others': others}
+    return df_frac
 
 
 def dataframe_to_dict(df: pd.DataFrame, default: str = 'random', translate: dict = None, others = None):
