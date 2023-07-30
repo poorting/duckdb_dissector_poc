@@ -1,5 +1,7 @@
 import sys
 import time
+import uuid
+
 import pandas as pd
 # from netaddr import IPAddress, IPNetwork
 from typing import Any
@@ -73,42 +75,55 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
     for protocol, source_port in attack_list:
         filter.append(f"(protocol='{protocol}' and source_port={source_port})")
         av = AttackVector(attack.db, attack.view, source_port, protocol, attack.filetype)
-        av.fraction_of_attack = row['frac']
+        if av.entries > 0:
+            attack_vectors.append(av)
+
+    # See if there is any other attack data outside the already established attack vectors
+    # This needs some serious SQL query wrangling...
+    # Get a view that contains all data *except* the attack vector outliers
+    # Create remainder view without fragmentation
+    viewname=attack.view if len(fragmentation_protocols) == 0 else 'attack_nofrag'
+    if len(filter) > 0:
+        filter_combi = " or ".join(filter)
+        LOGGER.debug(f" not ({filter_combi})")
+        attack.db.execute(f"create view remainder as select * from '{viewname}' where not ({filter_combi})")
+    else:
+        attack.db.execute(f"create view remainder as select * from '{viewname}'")
+
+    df_prot_dest = get_outliers_mult(attack.db, 'remainder', ['protocol', 'destination_port'], 0.1)
+    LOGGER.debug(df_prot_dest)
+    # If combine outliers of the same protocol
+    protos = list(set(list(df_prot_dest['protocol'])))
+    for proto in protos:
+        av = AttackVector(attack.db, 'remainder', -1, proto, attack.filetype)
         attack_vectors.append(av)
 
-    # for index, row in df_attacks_nofrag.iterrows():
-    #     LOGGER.debug(f"\n{row}")
-    #     source_port = int(row['source_port'])
-    #     protocol = str(row['protocol'])
-    #     filter.append(f"(protocol='{protocol}' and source_port={source_port})")
-    #     av = AttackVector(attack.db, attack.view, source_port, protocol, attack.filetype)
-    #     av.fraction_of_attack = row['frac']
-    #     attack_vectors.append(av)
+    # Combine attack vectors with the same service and protocol. First create a dictionary grouping them:
+    # {(service, protocol): [attack_vectors]}
+    vectors_by_service_protocol: dict[tuple[str, str], list[AttackVector]] = defaultdict(list)
+    for vector in attack_vectors:
+        vectors_by_service_protocol[(vector.service, vector.protocol)].append(vector)
 
-    # See if rest of traffic is worth exploring
-    frac = 0.0
-    for av in attack_vectors:
-        frac += av.fraction_of_attack
-
-    if frac < 0.97:
-        # See if there is any other attack data outside the already established attack vectors
-        # This needs some serious SQL query wrangling...
-        # Get a view that contains all data *except* the attack vector outliers
-        # Create remainder view without fragmentation
-        if len(filter) > 0:
-            filter_combi = " or ".join(filter)
-            LOGGER.debug(f" not ({filter_combi})")
-            attack.db.execute(f"create view remainder as select * from 'attack_nofrag' where not ({filter_combi})")
+    # Combine attack vectors in the same group.
+    reduced_vectors: list[AttackVector] = []
+    for (service, protocol), vectors in vectors_by_service_protocol.items():
+        if len(vectors) > 1:
+            viewname = uuid.uuid4()
+            ports = []
+            for v in vectors:
+                if v.source_port != -1:
+                    if isinstance(v.source_port, int):
+                        ports.append(str(v.source_port))
+                    else: # dict
+                        ports.extend([str(p) for p in v.source_port.keys() if p != "others"])
+            if ports:
+                attack.db.execute(f"create view '{viewname}' as select * from '{attack.view}' "
+                                  f"where protocol='{protocol}' and source_port in ({','.join(ports)})")
+                av = AttackVector(attack.db, viewname, -1, protocol, attack.filetype)
+                reduced_vectors.append(av)
         else:
-            attack.db.execute(f"create view remainder as select * from 'attack_nofrag'")
-
-        df_prot_dest = get_outliers_mult(attack.db, 'remainder', ['protocol', 'destination_port'], 0.1)
-        LOGGER.debug(df_prot_dest)
-        # If combine outliers of the same protocol
-        protos = list(set(list(df_prot_dest['protocol'])))
-        for proto in protos:
-            av = AttackVector(attack.db, 'remainder', -1, proto, attack.filetype)
-            attack_vectors.append(av)
+            reduced_vectors.append(vectors[0])
+    attack_vectors = reduced_vectors
 
     LOGGER.debug('Computing the fraction of traffic each attack vector contributes.')
     while True:
@@ -137,11 +152,11 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
             if len(srcips) == 0:
                 continue
             # Create a specific view that contains that protocol and IP addresses
-            LOGGER.debug(srcips)
+            # LOGGER.debug(srcips)
             sql_ips = "','".join(srcips)
             sql = f"create view 'attack_frag_{protocol}' as select * from '{attack.view}' where source_port=0 and " \
                   f"protocol='{protocol}' and source_address in ('{sql_ips}')"
-            LOGGER.debug(sql)
+            # LOGGER.debug(sql)
             attack.db.execute(sql)
             av = AttackVector(attack.db, f"attack_frag_{protocol}", 0, protocol, filetype=attack.filetype)
             if av.entries > 0:
@@ -166,6 +181,7 @@ def compute_summary(attack_vectors: list[AttackVector]) -> dict[str, Any]:
     total_pkts = 0
     total_pkts_nofrag = 0
     total_bytes = 0
+    total_bytes_nofrag = 0
     ip_addresses = set()
     times: list(datetime) = []
 
@@ -174,13 +190,14 @@ def compute_summary(attack_vectors: list[AttackVector]) -> dict[str, Any]:
         total_pkts += av.packets
         total_pkts_nofrag += av.summ_nr_pkts()
         total_bytes += av.bytes
+        total_bytes_nofrag += av.summ_nr_bytes()
         times.append(av.time_start)
         times.append(av.time_end)
         ip_addresses.update(av.source_ips)
 
     for av in attack_vectors:
-        if total_pkts_nofrag>0:
-            av.fraction_of_attack = round(av.packets/total_pkts_nofrag, 3)
+        if total_bytes_nofrag > 0:
+            av.fraction_of_attack = round(av.bytes/total_bytes_nofrag, 3)
         else:
             av.fraction_of_attack = 0
 
