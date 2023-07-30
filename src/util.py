@@ -414,7 +414,7 @@ def parquet_files_to_view(db: DuckDBPyConnection, pqt_files: list, filetype: Fil
               "coalesce(ip_frag_offset, 0) as fragmentation_offset, " \
               "coalesce(ntp_priv_reqcode, 0) as ntp_requestcode, " \
               "coalesce(ip_ttl, 0) as ttl, "\
-              "ipproto_table.protocol as protocol, "\
+              "coalesce(ipproto_table.protocol, col_protocol) as protocol, "\
               "col_protocol as service, " \
               "frame_time as time_start, " \
               "frame_time as time_end, " \
@@ -428,4 +428,5 @@ def parquet_files_to_view(db: DuckDBPyConnection, pqt_files: list, filetype: Fil
 
         LOGGER.debug(sql)
         db.execute(sql)
+
         return 'data'
