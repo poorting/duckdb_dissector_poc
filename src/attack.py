@@ -48,7 +48,7 @@ class Attack:
 
 
 class AttackVector:
-    def __init__(self, db: DuckDBPyConnection, view: str, source_port: int, protocol: str, filetype: FileType):
+    def __init__(self, db: DuckDBPyConnection, view: str, source_port, protocol: str, filetype: FileType):
 
         pp = pprint.PrettyPrinter(indent=4)
 
@@ -60,11 +60,11 @@ class AttackVector:
 
         self.view = f"{self.protocol}-{str(uuid.uuid4())}"
         start = time.time()
-        if source_port == -1:
+        if source_port  == -1:
             db.execute(
                 f"create view '{self.view}' as select * from '{view}' where protocol='{protocol}'")
             self.source_port = \
-                dict(get_outliers_single(db, self.view, 'source_port', 0.1, use_zscore=False)) or "random"
+                dict(get_outliers_single(db, self.view, 'source_port', 0.1, use_zscore=False, return_others=True)) or "random"
         else:
             db.execute(
                 f"create view '{self.view}' as select * from '{view}' where protocol='{protocol}' and source_port={source_port}")
@@ -75,6 +75,10 @@ class AttackVector:
             f" from '{self.view}'").fetchdf()
         LOGGER.debug(f"\n{results}")
         self.entries = int(results['entries'][0])
+
+        if self.entries == 0:
+            return
+
         self.packets = int(results['nr_packets'][0])
         self.bytes = int(results['nr_bytes'][0])
         self.time_start: datetime = pytz.utc.localize(results['time_start'][0])
@@ -183,8 +187,8 @@ class AttackVector:
                 LOGGER.debug(f"http_user_agent: {self.http_user_agent}\n")
 
             elif self.service == 'NTP':
-                self.ntp_requestcode = dict(get_outliers_single(self.data, 'ntp_requestcode', fraction_for_outlier=0.1,
-                                                                return_others=True)) or 'random'
+                self.ntp_requestcode = dict(get_outliers_single(
+                    db, self.view, 'ntp_requestcode', fraction_for_outlier=0.1, return_others=True)) or 'random'
                 LOGGER.debug(f"ntp_requestcode: {self.ntp_requestcode}\n")
 
     def __str__(self):
@@ -240,6 +244,9 @@ class AttackVector:
 
     def summ_nr_pkts(self) -> int:
         return self.packets if self.service != 'Fragmented IP packets' else 0
+
+    def summ_nr_bytes(self) -> int:
+        return self.bytes if self.service != 'Fragmented IP packets' else 0
 
 
 class Fingerprint:
