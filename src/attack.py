@@ -10,7 +10,7 @@ import urllib3
 import uuid
 import pprint
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 # from netaddr import IPAddress, IPNetwork
 
 from util import AMPLIFICATION_SERVICES, ETHERNET_TYPES, DNS_QUERY_TYPES, ICMP_TYPES, TCP_FLAG_NAMES, \
@@ -77,8 +77,8 @@ class AttackVector:
         self.entries = int(results['entries'][0])
         self.packets = int(results['nr_packets'][0])
         self.bytes = int(results['nr_bytes'][0])
-        self.time_start: datetime = results['time_start'][0].replace(tzinfo=None)
-        self.time_end: datetime = results['time_end'][0].replace(tzinfo=None)
+        self.time_start: datetime = pytz.utc.localize(results['time_start'][0])
+        self.time_end: datetime = pytz.utc.localize(results['time_end'][0])
         self.duration = (self.time_end - self.time_start).seconds
 
         results = db.execute(f"select distinct(source_address) from '{self.view}'").fetchdf()
@@ -147,7 +147,7 @@ class AttackVector:
                 LOGGER.debug(f"dns_query_name: {self.dns_query_name}\n")
 
                 self.dns_query_type = \
-                    dict(get_outliers_single(db, self.view, 'dns_qry_type', 0.1, return_others=True))
+                    dict(get_outliers_single(db, self.view, 'dns_qry_type', 0.1, return_others=False))
                 if self.dns_query_type:
                     dqt = dict()
                     for key, value in self.dns_query_type.items():
@@ -159,7 +159,14 @@ class AttackVector:
 
             elif self.protocol == 'ICMP':
                 self.icmp_type = \
-                    dict(get_outliers_single(db, self.view, 'icmp_type', 0.1, return_others=True)) or "random"
+                    dict(get_outliers_single(db, self.view, 'icmp_type', 0.1, return_others=False)) or None
+                if self.icmp_type:
+                    icmpt = dict()
+                    for key, value in self.icmp_type.items():
+                        icmpt[ICMP_TYPES.get(int(key), "others")] = value
+                    self.icmp_type = icmpt
+                else:
+                    self.icmp_type = "random"
                 LOGGER.debug(f"icmp_type: {self.icmp_type}\n")
 
             elif self.service in ['HTTP', 'HTTPS']:

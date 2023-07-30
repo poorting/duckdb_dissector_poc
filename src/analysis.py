@@ -40,38 +40,57 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
     df_attacks_frag = get_outliers_mult(attack.db, attack.view, ['protocol', 'source_port'], 0.05)
     LOGGER.debug(df_attacks_frag)
     fragmentation_protocols = set()  # protocols for which a significant fraction of traffic is fragmented packets
+
+    attack_list: list[(str, int)] = []
     for index, row in df_attacks_frag.iterrows():
         source_port = int(row['source_port'])
         protocol = str(row['protocol'])
         if source_port == 0 and protocol in ['UDP', 'TCP']:
             fragmentation_protocols.add(protocol)
+        else:
+            attack_list.append((protocol, source_port))
 
     LOGGER.debug(f"fragmentation protocols: {fragmentation_protocols}")
 
     # Create 'attack' view without fragmentation based on target(s)
-    attack.db.execute(f"create view attack_nofrag as select * from '{attack.view}' where source_port>0")
+    attack.db.execute(f"create view attack_nofrag as select * from '{attack.view}' "
+                      "where source_port>0 and protocol not in ('TCP','UDP')")
     df_attacks_nofrag = get_outliers_mult(attack.db, 'attack_nofrag', ['protocol', 'source_port'], 0.05)
+
     LOGGER.debug(df_attacks_nofrag)
+    for index, row in df_attacks_nofrag.iterrows():
+        source_port = int(row['source_port'])
+        protocol = str(row['protocol'])
+        attack_list.append((protocol, source_port))
+
+    attack_list = list(set(attack_list))
+    LOGGER.debug(attack_list)
 
     LOGGER.debug(f'Extracting attack vectors from source_port / protocol pair outliers ')
     # Leave fragmented for now
     attack_vectors: list[AttackVector] = []
     filter = []
-    for index, row in df_attacks_nofrag.iterrows():
-        LOGGER.debug(f"\n{row}")
-        source_port = int(row['source_port'])
-        protocol = str(row['protocol'])
+    for protocol, source_port in attack_list:
         filter.append(f"(protocol='{protocol}' and source_port={source_port})")
         av = AttackVector(attack.db, attack.view, source_port, protocol, attack.filetype)
         av.fraction_of_attack = row['frac']
         attack_vectors.append(av)
+
+    # for index, row in df_attacks_nofrag.iterrows():
+    #     LOGGER.debug(f"\n{row}")
+    #     source_port = int(row['source_port'])
+    #     protocol = str(row['protocol'])
+    #     filter.append(f"(protocol='{protocol}' and source_port={source_port})")
+    #     av = AttackVector(attack.db, attack.view, source_port, protocol, attack.filetype)
+    #     av.fraction_of_attack = row['frac']
+    #     attack_vectors.append(av)
 
     # See if rest of traffic is worth exploring
     frac = 0.0
     for av in attack_vectors:
         frac += av.fraction_of_attack
 
-    if frac < 0.90:
+    if frac < 0.97:
         # See if there is any other attack data outside the already established attack vectors
         # This needs some serious SQL query wrangling...
         # Get a view that contains all data *except* the attack vector outliers
@@ -79,9 +98,9 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
         if len(filter) > 0:
             filter_combi = " or ".join(filter)
             LOGGER.debug(f" not ({filter_combi})")
-            attack.db.execute(f"create view remainder as select * from attack_nofrag where not ({filter_combi})")
+            attack.db.execute(f"create view remainder as select * from 'attack_nofrag' where not ({filter_combi})")
         else:
-            attack.db.execute(f"create view remainder as select * from attack_nofrag")
+            attack.db.execute(f"create view remainder as select * from 'attack_nofrag'")
 
         df_prot_dest = get_outliers_mult(attack.db, 'remainder', ['protocol', 'destination_port'], 0.1)
         LOGGER.debug(df_prot_dest)
@@ -91,13 +110,42 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
             av = AttackVector(attack.db, 'remainder', -1, proto, attack.filetype)
             attack_vectors.append(av)
 
-    # Handle the fragmentation bits now
+    LOGGER.debug('Computing the fraction of traffic each attack vector contributes.')
+    while True:
+        total_bytes = sum([v.bytes for v in attack_vectors])
+        for vector in attack_vectors:
+            vector.fraction_of_attack = round(vector.bytes / total_bytes, 3)
+            if vector.fraction_of_attack < 0.05:
+                break
+        else:
+            break
+        LOGGER.debug(f'removing {vector} ({vector.fraction_of_attack * 100:.1f}% of traffic)')
+        attack_vectors.remove(vector)
+
+    # Handle the fragmentation vectors now
     # But only needed if other attack vectors already found
     if len(attack_vectors) > 0:
-        LOGGER.debug("Checking fragmented bits now")
+        LOGGER.debug("Checking fragmented vectors now")
         for protocol in fragmentation_protocols:
-            av = AttackVector(attack.db, attack.view, 0, protocol, attack.filetype)
-            attack_vectors.append(av)
+            # for every protocol, use only source ips that appear in other attack vectors (of the same protocol).
+            srcips = []
+            for av in attack_vectors:
+                if av.protocol == protocol and isinstance(av.source_port, int) and av.source_port > 0:
+                    srcips.extend(av.source_ips)
+
+            srcips = list(set(srcips))
+            if len(srcips) == 0:
+                continue
+            # Create a specific view that contains that protocol and IP addresses
+            LOGGER.debug(srcips)
+            sql_ips = "','".join(srcips)
+            sql = f"create view 'attack_frag_{protocol}' as select * from '{attack.view}' where source_port=0 and " \
+                  f"protocol='{protocol}' and source_address in ('{sql_ips}')"
+            LOGGER.debug(sql)
+            attack.db.execute(sql)
+            av = AttackVector(attack.db, f"attack_frag_{protocol}", 0, protocol, filetype=attack.filetype)
+            if av.entries > 0:
+                attack_vectors.append(av)
 
     return sorted(attack_vectors)
 
@@ -136,8 +184,8 @@ def compute_summary(attack_vectors: list[AttackVector]) -> dict[str, Any]:
         else:
             av.fraction_of_attack = 0
 
-    time_start: datetime = min(times).replace(tzinfo=None)
-    time_end: datetime = max(times).replace(tzinfo=None)
+    time_start: datetime = pytz.utc.localize(min(times).replace(tzinfo=None))
+    time_end: datetime = pytz.utc.localize(max(times).replace(tzinfo=None))
     duration = (time_end - time_start).seconds
     nr_bytes = total_bytes
     nr_packets = total_pkts

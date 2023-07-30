@@ -246,7 +246,8 @@ def determine_filetype(filenames: list[Path]) -> FileType:
             error(f'{filename} does not exist or is not readable. If using docker, did you mount the location '
                   f'as a volume?')
 
-        if filename.suffix.lower() == '.pcap' and filetype in [FileType.PCAP, None]:
+        if (filename.suffix.lower() == '.pcap' or filename.suffix.lower() == '.pcapng')\
+                and filetype in [FileType.PCAP, None]:
             filetype = FileType.PCAP
         elif filename.suffix.lower() == '.parquet' and filetype in [FileType.PQT, None]:
             filetype = FileType.PQT
@@ -326,29 +327,32 @@ def get_outliers_single(db: DuckDBPyConnection,
                         use_zscore=True):
 
     start = time.time()
-    df_all = db.execute(
-        f"select {column}, sum(nr_packets)/(select sum(nr_packets) from '{view}') as frac from '{view}'"
-        f" group by all order by frac desc").fetchdf()
+    sql = f"select {column}, sum(nr_packets)/(select sum(nr_packets) from '{view}') as frac from '{view}'"\
+          " group by all order by frac desc"
+
+    df_all = db.execute(sql).fetchdf()
 
     zscores = (df_all['frac'] - df_all['frac'].mean()) / df_all['frac'].std()
     LOGGER.debug(f"top 5 '{column}':\n{df_all.head()}")
     LOGGER.debug(f"{len(df_all)} results")
 
-    # Explicit cast for integer column types (otherwise int turns to float)
-    column_type = int if column in INT_COLUMNS else type(df_all.iloc[0][column])
-    LOGGER.debug(f"Column type: {column_type}")
+    outliers = []
 
-    # If the top result already below fraction and zscore<2 then don't bother
-    # (Shaves two seconds of the time needed for traversing 64k destination ports)
-    row = df_all.iloc[0]
-    if row['frac'] <= fraction_for_outlier and ((use_zscore and zscores[0] <= 2) or not use_zscore):
-        outliers = []
-    else:
-        outliers = [(column_type(row[column]), round(row['frac'], 3)) for index, row in df_all.iterrows()
-                    if row['frac'] > fraction_for_outlier or (use_zscore and zscores[index] > 2)]
+    if not df_all.empty:
+        # Explicit cast for integer column types (otherwise int turns to float)
+        column_type = int if column in INT_COLUMNS else type(df_all.iloc[0][column])
 
-    if outliers and return_others and (explained := sum([fraction for _, fraction in outliers])) < 0.99:
-        outliers.append(('others', round(1 - explained, 3)))
+        # If the top result already below fraction and zscore<2 then don't bother
+        # (Shaves two seconds of the time needed for traversing 64k destination ports)
+        row = df_all.iloc[0]
+        if row['frac'] <= fraction_for_outlier and ((use_zscore and zscores[0] <= 2) or not use_zscore):
+            outliers = []
+        else:
+            outliers = [(column_type(row[column]), round(row['frac'], 3)) for index, row in df_all.iterrows()
+                        if row['frac'] > fraction_for_outlier or (use_zscore and zscores[index] > 2)]
+
+        if outliers and return_others and (explained := sum([fraction for _, fraction in outliers])) < 0.99:
+            outliers.append(('others', round(1 - explained, 3)))
 
     duration = time.time() - start
     LOGGER.debug(f" took {duration:.2f}s")
