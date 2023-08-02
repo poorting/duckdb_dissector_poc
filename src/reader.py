@@ -124,8 +124,8 @@ class Pcap2Parquet:
 
         self.splitsize = self.max_pcap_chunk
         if (nr_procs * self.max_pcap_chunk) > filesize:
-            self.splitsize = int(filesize/nr_procs)+1
-            LOGGER.debug(f"Split size set to {self.splitsize}MB")
+            self.splitsize = 5
+        LOGGER.debug(f"Split size set to {self.splitsize}MB")
 
     # ------------------------------------------------------------------------------
     def __prepare_file(self):
