@@ -190,6 +190,8 @@ class AttackVector:
                 LOGGER.debug(f"ntp_requestcode: {self.ntp_requestcode}\n")
 
     def __str__(self):
+        if self.service == 'Fragmented IP packets':
+            self.fraction_of_attack = 0
         return f'[AttackVector ({round(self.fraction_of_attack * 100, 1)}% of traffic) {self.protocol}, service: {self.service}]'
 
     def __repr__(self):
