@@ -80,8 +80,13 @@ if __name__ == '__main__':
         LOGGER.info(f"Conversion took {duration:.2f}s")
         LOGGER.debug(pqt_files)
 
-    # db = duckdb.connect('test.duckdb')
-    db = duckdb.connect()
+    if args.debug:
+        if os.path.exists('dissector.duckdb'):
+            os.remove('dissector.duckdb')
+        db = duckdb.connect('dissector.duckdb')
+    else:
+        db = duckdb.connect()
+
     start = time.time()
 
     view = parquet_files_to_view(db, pqt_files, filetype)
