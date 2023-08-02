@@ -1,17 +1,13 @@
-import dbm
 import socket
 import time
 import json
 import hashlib
-from typing import List
 import pytz
 import requests
 import urllib3
-import uuid
 import pprint
 from pathlib import Path
 from datetime import datetime, timedelta
-# from netaddr import IPAddress, IPNetwork
 
 from util import AMPLIFICATION_SERVICES, ETHERNET_TYPES, DNS_QUERY_TYPES, ICMP_TYPES, TCP_FLAG_NAMES, \
     get_outliers_single, get_outliers_mult, FileType
@@ -28,7 +24,7 @@ class Attack:
         self.view = view
         self.filetype = filetype
         # self.attack_vectors: list[AttackVector]
-        df = db.execute(f"select count() as entries, sum(nr_packets) as total from {view}").fetchdf()
+        df = db.execute(f"select count() as entries, sum(nr_packets) as total from '{view}'").fetchdf()
         LOGGER.debug(f"Attack object contains {int(df['entries'][0])} entries, with information on {int(df['total'][0])} packets")
 
     def filter_data_on_target(self, target: list[str]):
@@ -40,11 +36,13 @@ class Attack:
         LOGGER.debug('Filtering attack data on target IP address(es).')
         # Really should try to find a more appropriate way of doing this (rather than list of IP addresses)
         ip_list = "','".join(target)
-        viewid = uuid.uuid4()
+        viewid = f"attack-view-target"
         sql = f"create view '{viewid}' as select * from '{self.view}' where destination_address in ('{ip_list}')"
         LOGGER.debug(sql)
         self.db.execute(sql)
         self.view = viewid
+        df = self.db.execute(f"select count() as entries, sum(nr_packets) as total from '{self.view}'").fetchdf()
+        LOGGER.debug(f"Attack object contains {int(df['entries'][0])} entries, with information on {int(df['total'][0])} packets")
 
 
 class AttackVector:
@@ -58,7 +56,7 @@ class AttackVector:
         self.protocol = protocol
         self.filetype = filetype
 
-        self.view = f"{self.protocol}-{str(uuid.uuid4())}"
+        self.view = f"{view}-{self.protocol}({str(source_port)})"
         start = time.time()
         if source_port  == -1:
             db.execute(

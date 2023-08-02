@@ -1,9 +1,3 @@
-import sys
-import time
-import uuid
-
-import pandas as pd
-# from netaddr import IPAddress, IPNetwork
 from typing import Any
 from collections import defaultdict
 from datetime import datetime
@@ -55,9 +49,9 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
     LOGGER.debug(f"fragmentation protocols: {fragmentation_protocols}")
 
     # Create 'attack' view without fragmentation based on target(s)
-    attack.db.execute(f"create view attack_nofrag as select * from '{attack.view}' "
+    attack.db.execute(f"create view '{attack.view}_nofrag' as select * from '{attack.view}' "
                       "where source_port>0 and protocol not in ('TCP','UDP')")
-    df_attacks_nofrag = get_outliers_mult(attack.db, 'attack_nofrag', ['protocol', 'source_port'], 0.05)
+    df_attacks_nofrag = get_outliers_mult(attack.db, f'{attack.view}_nofrag', ['protocol', 'source_port'], 0.05)
 
     LOGGER.debug(df_attacks_nofrag)
     for index, row in df_attacks_nofrag.iterrows():
@@ -66,9 +60,9 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
         attack_list.append((protocol, source_port))
 
     attack_list = list(set(attack_list))
-    LOGGER.debug(attack_list)
+    LOGGER.debug(f"All outliers with and without fragmentation:\n{attack_list}")
 
-    LOGGER.debug(f'Extracting attack vectors from source_port / protocol pair outliers ')
+    LOGGER.debug(f'Extracting attack vectors from these source_port / protocol pair outliers ')
     # Leave fragmented for now
     attack_vectors: list[AttackVector] = []
     filter = []
@@ -82,20 +76,20 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
     # This needs some serious SQL query wrangling...
     # Get a view that contains all data *except* the attack vector outliers
     # Create remainder view without fragmentation
-    viewname=attack.view if len(fragmentation_protocols) == 0 else 'attack_nofrag'
+    viewname=attack.view if len(fragmentation_protocols) == 0 else f'{attack.view}_nofrag'
     if len(filter) > 0:
         filter_combi = " or ".join(filter)
         LOGGER.debug(f" not ({filter_combi})")
-        attack.db.execute(f"create view remainder as select * from '{viewname}' where not ({filter_combi})")
+        attack.db.execute(f"create view '{viewname}_remainder' as select * from '{viewname}' where not ({filter_combi})")
     else:
-        attack.db.execute(f"create view remainder as select * from '{viewname}'")
+        attack.db.execute(f"create view '{viewname}_remainder' as select * from '{viewname}'")
 
-    df_prot_dest = get_outliers_mult(attack.db, 'remainder', ['protocol', 'destination_port'], 0.1)
+    df_prot_dest = get_outliers_mult(attack.db, f'{viewname}_remainder', ['protocol', 'destination_port'], 0.1)
     LOGGER.debug(df_prot_dest)
     # If combine outliers of the same protocol
     protos = list(set(list(df_prot_dest['protocol'])))
     for proto in protos:
-        av = AttackVector(attack.db, 'remainder', -1, proto, attack.filetype)
+        av = AttackVector(attack.db, f'{viewname}_remainder', -1, proto, attack.filetype)
         attack_vectors.append(av)
 
     # Combine attack vectors with the same service and protocol. First create a dictionary grouping them:
@@ -108,7 +102,7 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
     reduced_vectors: list[AttackVector] = []
     for (service, protocol), vectors in vectors_by_service_protocol.items():
         if len(vectors) > 1:
-            viewname = uuid.uuid4()
+            viewname = f"{attack.view}_combined_{protocol}"
             ports = []
             for v in vectors:
                 if v.source_port != -1:
@@ -154,11 +148,11 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
             # Create a specific view that contains that protocol and IP addresses
             # LOGGER.debug(srcips)
             sql_ips = "','".join(srcips)
-            sql = f"create view 'attack_frag_{protocol}' as select * from '{attack.view}' where source_port=0 and " \
+            sql = f"create view '{attack.view}_frag_{protocol}' as select * from '{attack.view}' where source_port=0 and " \
                   f"protocol='{protocol}' and source_address in ('{sql_ips}')"
             # LOGGER.debug(sql)
             attack.db.execute(sql)
-            av = AttackVector(attack.db, f"attack_frag_{protocol}", 0, protocol, filetype=attack.filetype)
+            av = AttackVector(attack.db, f"{attack.view}_frag_{protocol}", 0, protocol, filetype=attack.filetype)
             if av.entries > 0:
                 attack_vectors.append(av)
 
