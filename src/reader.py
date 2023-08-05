@@ -253,6 +253,10 @@ class Pcap2Parquet:
         if not self.chunks:
             LOGGER.error("conversion aborted")
             return None
+        duration = time.time() - start
+        sf = os.path.basename(self.src_file)
+        LOGGER.debug(f"Splitting {sf} took {duration:.2f}s")
+        start = time.time()
 
         # Convert chunks to csv individually and in parallel
         pool = multiprocessing.Pool(self.nr_procs)
