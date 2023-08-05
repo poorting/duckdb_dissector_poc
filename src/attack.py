@@ -57,6 +57,9 @@ class AttackVector:
         self.filetype = filetype
 
         self.view = f"{view}-{self.protocol}({str(source_port)})"
+        self.input_view = view
+        self.input_protocol = protocol
+        self.input_port = source_port
         start = time.time()
         if source_port  == -1:
             db.execute(
