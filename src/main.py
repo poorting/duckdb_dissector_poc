@@ -81,10 +81,15 @@ if __name__ == '__main__':
         LOGGER.debug(pqt_files)
 
     if args.debug:
-        if os.path.exists('dissector.duckdb'):
-            os.remove('dissector.duckdb')
-        db = duckdb.connect('dissector.duckdb')
+        # Store duckdb on disk in debug mode
+        os.makedirs('duckdb', exist_ok=True)
+        db_name = "duckdb/"+os.path.basename(args.files[0])+".duckdb"
+        LOGGER.debug(f"Basename: {db_name}")
+        if os.path.exists(db_name):
+            os.remove(db_name)
+        db = duckdb.connect(db_name)
     else:
+        # Otherwise just an in-memory database
         db = duckdb.connect()
 
     start = time.time()
