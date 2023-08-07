@@ -105,11 +105,9 @@ def extract_attack_vectors(attack: Attack) -> list[AttackVector]:
             viewname = f"{attack.view}_combined_{protocol}"
             ports = []
             for v in vectors:
-                if v.source_port != -1:
-                    if isinstance(v.source_port, int):
-                        ports.append(str(v.source_port))
-                    else: # dict
-                        ports.extend([str(p) for p in v.source_port.keys() if p != "others"])
+                if v.input_source_port != -1:
+                    if isinstance(v.input_source_port, int):
+                        ports.append(str(v.input_source_port))
             if ports:
                 attack.db.execute(f"create view '{viewname}' as select * from '{attack.view}' "
                                   f"where protocol='{protocol}' and source_port in ({','.join(ports)})")
