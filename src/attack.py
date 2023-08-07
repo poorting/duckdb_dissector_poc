@@ -59,7 +59,7 @@ class AttackVector:
         self.view = f"{view}-{self.protocol}({str(source_port)})"
         self.input_view = view
         self.input_protocol = protocol
-        self.input_port = source_port
+        self.input_source_port = source_port
         start = time.time()
         if source_port  == -1:
             db.execute(
@@ -116,7 +116,7 @@ class AttackVector:
 
         self.tcp_flags = None
         if self.protocol == 'TCP':
-            tcp_flags = dict(get_outliers_single(db, self.view, 'tcp_flags', 0.1, return_others=False))
+            tcp_flags = dict(get_outliers_single(db, self.view, 'tcp_flags', 0.1, return_others=True))
             # tcp_flags = dataframe_to_dict(flags['df'], None, others=flags['others'])
             # tcp_flags = dict(flags)
 
