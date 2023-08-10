@@ -167,3 +167,4 @@ cython_debug/
 config.ini
 fingerprints/
 parquet/
+duckdb/
