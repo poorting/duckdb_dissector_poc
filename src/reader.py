@@ -1,3 +1,4 @@
+import logging
 import os
 import io
 import shutil
@@ -218,7 +219,8 @@ class Pcap2Parquet:
                 if len(output) > 0:
                     err = output.decode('utf-8')
                     for errline in err.split('\n'):
-                        if len(errline) > 0:
+                        # Ignore warnings/errors unless --debug specified
+                        if len(errline) > 0 and LOGGER.getEffectiveLevel() == logging.DEBUG:
                             LOGGER.warning(errline)
                 os.close(tmp_file)
                 csv_file = tmp_filename
