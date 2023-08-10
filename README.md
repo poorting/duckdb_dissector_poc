@@ -1,13 +1,13 @@
 # duckdb_dissector_poc
-Proof of concept for using duckdb for creating fingerprints based on large files
+Proof of concept for using duckdb for creating fingerprints based on large pcap or flow files
 
-# Proof of Concept - do not use!
+## Proof of Concept goal
 
-It (very very very) roughly does what [ddos_dissector](https://github.com/ddos-clearing-house/ddos_dissector) from the [DDoS Clearing House](https://github.com/ddos-clearing-house) does: create fingerprints from a packet capture of a DDoS attack.
+It does what [ddos_dissector](https://github.com/ddos-clearing-house/ddos_dissector) from the [DDoS Clearing House](https://github.com/ddos-clearing-house) does: create fingerprints from a packet capture (pcap/flow) of a DDoS attack.
 
-The point is to investigate whether converting a pcap file to parquet format first, then using [duckdb](https://duckdb.org/) to do the heavy analytical lifting is useful (faster, bigger, etc).
+The point is to investigate whether converting a pcap file to parquet format first, then using [duckdb](https://duckdb.org/) to do the heavy analytical lifting is useful (faster, bigger, etc) compared to the original approach of loading the entire capture in a dataframe in memory for analysis.
 
-It tries to be faithful in its calculations, but in a crudely/ugly coded way. The goal is to be a good approximation of the analysis done by the original ddos_dissector in order to be able to compare the two approaches.
+It tries to be faithful to the original in its calculations, but because of the difference in approach this may not always entirely be the case. The goal is to be a good approximation of the analysis done by the original ddos_dissector, in order to be able to compare the two approaches.
 
 ## Approach
 
@@ -24,8 +24,8 @@ Steps in duckdb_dissector:
 1. convert pcap to csv
 2. convert csv to parquet
 3. use duckdb to analyse parquet file 
-   - load results in dataframe in memory
    - determine attack vectors etc.
+   - load results in dataframe in memory
 4. write fingerprint
 
 ### More detailed
@@ -87,4 +87,11 @@ For bigger files the differences get more dramatic. The samples below were run o
 * A [50GB file](http://traces.simpleweb.org/booter-attacks-im2015/anon-Booter4.pcap.gz) is processed in 30 minutes. Yet again mostly conversion, the actual analysis only takes 20 seconds of those 30 minutes.
 
 
+## How to use the Dissector
 
+This dissector can be used in the same way as the original, so [refer to those instructions](https://github.com/ddos-clearing-house/ddos_dissector#how-to-use-the-dissector).
+
+You can build a local docker image named ddosclearinghouse/dissector (as used in the ['Option 1: in Docker'](https://github.com/ddos-clearing-house/ddos_dissector#option-1-in-docker)) by issuing the following command in the base directory:
+```commandline
+docker build . -t ddosclearinghouse/dissector
+```
