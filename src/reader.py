@@ -62,7 +62,8 @@ class Pcap2Parquet:
         '_ws.col.Protocol': {'col_protocol': pa.string()},
         'dns.qry.name': {'dns_qry_name': pa.string()},
         'dns.qry.type': {'dns_qry_type': pa.string()},
-        'eth.type': {'eth_type': pa.uint16()},
+        # should be pa.uint16() but docker version seems to export as 32bit hex value
+        'eth.type': {'eth_type': pa.uint32()},
         'frame.len': {'frame_len': pa.uint16()},
         'udp.length': {'udp_length': pa.uint16()},
         'http.request.uri': {'http_request_uri': pa.string()},
@@ -218,12 +219,11 @@ class Pcap2Parquet:
                     err = output.decode('utf-8')
                     for errline in err.split('\n'):
                         if len(errline) > 0:
-                            logger.warning(errline)
+                            LOGGER.warning(errline)
                 os.close(tmp_file)
                 csv_file = tmp_filename
         except Exception as e:
             LOGGER.error(f'Error reading {str(pcap_chunk)} : {e}')
-            pp.pprint(e)
             os.close(tmp_file)
             os.remove(tmp_filename)
 
