@@ -92,6 +92,9 @@ if __name__ == '__main__':
         # Otherwise just an in-memory database
         db = duckdb.connect()
 
+    # Explicitly set number of threads
+    db.execute(f"SET threads={args.n}")
+
     start = time.time()
 
     view = parquet_files_to_view(db, pqt_files, filetype)
