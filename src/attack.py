@@ -36,7 +36,7 @@ class Attack:
         LOGGER.debug('Filtering attack data on target IP address(es).')
         # Really should try to find a more appropriate way of doing this (rather than list of IP addresses)
         ip_list = "','".join(target)
-        viewid = f"attack-view-target"
+        viewid = f"target"
         sql = f"create view '{viewid}' as select * from '{self.view}' where destination_address in ('{ip_list}')"
         LOGGER.debug(sql)
         self.db.execute(sql)
@@ -56,7 +56,8 @@ class AttackVector:
         self.protocol = protocol
         self.filetype = filetype
 
-        self.view = f"{view}-{self.protocol}({str(source_port)})"
+        self.view = f"{view}_{self.protocol}_{str(source_port)}" if source_port >= 0 \
+            else f"{view}_{self.protocol}_min_{str(abs(source_port))}"
         self.input_view = view
         self.input_protocol = protocol
         self.input_source_port = source_port
