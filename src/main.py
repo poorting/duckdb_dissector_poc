@@ -80,8 +80,8 @@ if __name__ == '__main__':
         LOGGER.info(f"Conversion took {duration:.2f}s")
         LOGGER.debug(pqt_files)
 
-    if args.debug:
-        # Store duckdb on disk in debug mode
+    if args.debug and not DOCKERIZED:
+        # Store duckdb on disk in debug mode if not dockerized
         os.makedirs('duckdb', exist_ok=True)
         db_name = "duckdb/"+os.path.basename(args.files[0])+".duckdb"
         LOGGER.debug(f"Basename: {db_name}")
