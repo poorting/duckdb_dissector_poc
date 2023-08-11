@@ -33,9 +33,9 @@ Extensive use is made of 'views', a way of putting a filter on a database, table
 
 The key here is that creating a view **does not load anything in memory** (like a table would). It is filled with data on the fly whenever an SQL statement operates on a view.
 
-For example: the first use of a view is to create a, well, view on the parquet file to be analysed:
+For example: the first use of a view is to create a, well, view on the parquet file(s) to be analysed:
 ```
-CREATE VIEW raw AS SELECT * FROM '{parquet_file}'
+CREATE VIEW raw AS SELECT * FROM read_parquet({pqt_files})
 ```
 
 Another view is then created to combine fields into one (e.g. coalescing udp_srcport and tcp_srcport) and other stuff.
