@@ -240,14 +240,17 @@ def determine_filetype(filenames: list[Path]) -> FileType:
     :param filenames:
     :return: PCAP or FLOW
     """
+
+    pcapsuffixes = ['.pcap', '.pcapng', '.erf']
+
     filetype = None
     for filename in filenames:
         if not filename.exists() or not filename.is_file() or not os.access(filename, os.R_OK):
             error(f'{filename} does not exist or is not readable. If using docker, did you mount the location '
                   f'as a volume?')
 
-        if (filename.suffix.lower() == '.pcap' or filename.suffix.lower() == '.pcapng')\
-                and filetype in [FileType.PCAP, None]:
+        if (filename.suffix.lower() in pcapsuffixes or os.path.basename(filename).lower().startswith('snort.log.'))\
+            and filetype in [FileType.PCAP, None]:
             filetype = FileType.PCAP
         elif filename.suffix.lower() == '.parquet' and filetype in [FileType.PQT, None]:
             filetype = FileType.PQT
