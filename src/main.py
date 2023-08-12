@@ -106,7 +106,7 @@ if __name__ == '__main__':
         LOGGER.info("No attack targets found")
         exit(0)
 
-    attack.filter_data_on_target([target])
+    attack.filter_data_on_target(target)
     attack_vectors = extract_attack_vectors(attack)
     if len(attack_vectors) == 0:
         LOGGER.critical(f'No attack vectors found in traffic capture.')

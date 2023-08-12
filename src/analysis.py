@@ -18,10 +18,11 @@ def infer_target(attack: Attack) -> str:
     """
     LOGGER.debug("Inferring attack target.")
     targets = get_outliers_single(attack.db, attack.view, 'destination_address', 0.5)
-
-    target = None
+    LOGGER.debug(targets)
+    target = []
     if not len(targets) == 0:
-        target, _ = targets[0]
+        target = [t for t, _ in targets]
+
     return target
 
 

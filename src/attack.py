@@ -34,7 +34,9 @@ class Attack:
         :return: None
         """
         LOGGER.debug('Filtering attack data on target IP address(es).')
-        # Really should try to find a more appropriate way of doing this (rather than list of IP addresses)
+        if isinstance(target, str):
+            target = [target]
+
         ip_list = "','".join(target)
         viewid = f"target"
         sql = f"create view '{viewid}' as select * from '{self.view}' where destination_address in ('{ip_list}')"
